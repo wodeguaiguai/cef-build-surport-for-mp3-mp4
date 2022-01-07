@@ -42,4 +42,4 @@ set LIB=%sdk_root%\Lib\%sdk_version%\um\%arch%;%sdk_root%\Lib\%sdk_version\ucrt\
 @REM python automate-git.py --download-dir=%DOWNLOAD_DIR% --depot-tools-dir=%DEPOT_TOOLS_DIR% --no-update --no-debug-build --build-log-file --force-distrib --minimal-distrib --client-distrib --verbose-build --force-build --%arch%-build
 
 @REM branch build
-python automate-git.py --download-dir=%DOWNLOAD_DIR% --depot-tools-dir=%DEPOT_TOOLS_DIR% --no-update --no-debug-build --build-log-file --force-distrib --minimal-distrib --client-distrib  --verbose-build --force-build --%arch%-build --branch=4758
+python automate-git.py --download-dir=%DOWNLOAD_DIR% --depot-tools-dir=%DEPOT_TOOLS_DIR% --no-update --no-debug-build --build-log-file --force-distrib --minimal-distrib --client-distrib  --verbose-build --force-build --%arch%-build --branch=4692
