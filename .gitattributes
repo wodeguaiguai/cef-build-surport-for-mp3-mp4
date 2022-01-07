@@ -1,0 +1,2 @@
+*.bat linguist-language=cpp
+*.py linguist-language=cpp
