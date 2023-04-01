@@ -12,4 +12,4 @@ set DEPOT_TOOLS_DIR=D:\Environment\depot_tools
 if not exist %DOWNLOAD_DIR% mkdir chromium_git 
 @REM if not exist %DEPOT_TOOLS_DIR% 7z.exe x depot_tools.7z
 
-python automate-git.py --download-dir=%DOWNLOAD_DIR% --depot-tools-dir=%DEPOT_TOOLS_DIR% --no-distrib --no-build
+python3 automate-git.py --download-dir=%DOWNLOAD_DIR% --depot-tools-dir=%DEPOT_TOOLS_DIR% --no-distrib --no-build
