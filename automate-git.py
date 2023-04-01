@@ -5,7 +5,6 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from datetime import datetime
-import json
 from io import open
 from optparse import OptionParser
 import os
@@ -33,8 +32,6 @@ depot_tools_url = 'https://chromium.googlesource.com/chromium/tools/depot_tools.
 depot_tools_archive_url = 'https://storage.googleapis.com/chrome-infra/depot_tools.zip'
 
 cef_git_url = 'https://bitbucket.org/chromiumembedded/cef.git'
-
-chromium_channel_json_url = 'https://omahaproxy.appspot.com/all.json'
 
 ##
 # Global system variables.
@@ -156,16 +153,6 @@ def get_git_hash(path, branch):
   result = exec_cmd(cmd, path)
   if result['out'] != '':
     return result['out'].strip()
-  return 'Unknown'
-
-
-def get_git_date(path, branch):
-  """ Returns the date for the specified branch/tag/hash. """
-  cmd = "%s show -s --format=%%ct %s" % (git_exe, branch)
-  result = exec_cmd(cmd, path)
-  if result['out'] != '':
-    return datetime.utcfromtimestamp(
-        int(result['out'].strip())).strftime('%Y-%m-%d %H:%M:%S UTC')
   return 'Unknown'
 
 
@@ -326,49 +313,6 @@ def onerror(func, path, exc_info):
     raise
 
 
-def read_json_url(url):
-  """ Read a JSON URL. """
-  msg('Downloading %s' % url)
-  return json.loads(urlopen(url).read())
-
-
-g_channel_data = None
-
-
-def get_chromium_channel_data(os, channel, param=None):
-  """ Returns all data for the specified Chromium channel. """
-  global g_channel_data
-
-  if g_channel_data is None:
-    g_channel_data = read_json_url(chromium_channel_json_url)
-    assert len(g_channel_data) > 0, 'Failed to load Chromium channel data'
-
-  for oses in g_channel_data:
-    if oses['os'] == os:
-      for version in oses['versions']:
-        if version['channel'] == channel:
-          assert version['os'] == os
-          assert version['channel'] == channel
-          if param is None:
-            return version
-          else:
-            assert param in version, 'Missing parameter %s for Chromium channel %s %s' % (
-                param, os, channel)
-            return version[param]
-      raise Exception("Invalid Chromium channel value: %s" % channel)
-  raise Exception("Invalid Chromium os value: %s" % os)
-
-
-def get_chromium_channel_commit(os, channel):
-  """ Returns the current branch commit for the specified Chromium channel. """
-  return get_chromium_channel_data(os, channel, 'branch_commit')
-
-
-def get_chromium_channel_version(os, channel):
-  """ Returns the current version for the specified Chromium channel. """
-  return get_chromium_channel_data(os, channel, 'current_version')
-
-
 def get_chromium_main_position(commit):
   """ Returns the closest main position for the specified Chromium commit. """
   # Using -2 because a "Publish DEPS" commit which does not have a master
@@ -394,16 +338,6 @@ def get_chromium_main_commit(position):
   return None
 
 
-def get_chromium_versions(commit):
-  """ Returns the list of Chromium versions that contain the specified commit.
-      Versions are listed oldest to newest. """
-  cmd = '%s tag --contains %s' % (git_exe, commit)
-  result = exec_cmd(cmd, chromium_src_dir)
-  if result['out'] != '':
-    return [line.strip() for line in result['out'].strip().split('\n')]
-  return None
-
-
 def get_build_compat_versions():
   """ Returns the compatible Chromium and (optionally) depot_tools versions
       specified by the CEF checkout. """
@@ -414,68 +348,6 @@ def get_build_compat_versions():
   if not 'chromium_checkout' in config:
     raise Exception("Missing chromium_checkout value in %s" % (compat_path))
   return config
-
-
-def get_chromium_target_version(os='win', channel='canary', target_distance=0):
-  """ Returns the target Chromium version based on a heuristic. """
-  # The current compatible version from CEF.
-  compat_version = chromium_compat_version
-  compat_commit = get_git_hash(chromium_src_dir, compat_version)
-  if compat_version == compat_commit:
-    versions = get_chromium_versions(compat_commit)
-    if len(versions) > 0:
-      compat_version = 'refs/tags/' + versions[0]
-      # Closest version may not align with the compat position, so adjust the
-      # commit to match.
-      compat_commit = get_git_hash(chromium_src_dir, compat_version)
-  compat_position = get_chromium_main_position(compat_commit)
-  compat_date = get_git_date(chromium_src_dir, compat_commit)
-
-  # The most recent channel version from the Chromium website.
-  channel_version = 'refs/tags/' + get_chromium_channel_version(os, channel)
-  channel_commit = get_chromium_channel_commit(os, channel)
-  channel_position = get_chromium_main_position(channel_commit)
-  channel_date = get_git_date(chromium_src_dir, channel_commit)
-
-  if compat_position >= channel_position:
-    # Already compatible with the channel version or newer.
-    target_version = compat_version
-    target_commit = compat_commit
-    target_position = compat_position
-    target_date = compat_date
-  elif target_distance <= 0 or compat_position + target_distance >= channel_position:
-    # Channel version is within the target distance.
-    target_version = channel_version
-    target_commit = channel_commit
-    target_position = channel_position
-    target_date = channel_date
-  else:
-    # Find an intermediary version that's within the target distance.
-    target_position = compat_position + target_distance
-    target_commit = get_chromium_main_commit(target_position)
-    versions = get_chromium_versions(target_commit)
-    if len(versions) > 0:
-      target_version = 'refs/tags/' + versions[0]
-      # Closest version may not align with the target position, so adjust the
-      # commit and position to match.
-      target_commit = get_git_hash(chromium_src_dir, target_version)
-      target_position = get_chromium_main_position(target_commit)
-    else:
-      target_version = target_commit
-    target_date = get_git_date(chromium_src_dir, target_commit)
-
-  msg("")
-  msg("Computed Chromium update for %s %s at distance %d" % (os, channel,
-                                                             target_distance))
-  msg("Compat:  %s %s %s (#%d)" % (compat_date, compat_version, compat_commit,
-                                   compat_position))
-  msg("Target:  %s %s %s (#%d)" % (target_date, target_version, target_commit,
-                                   target_position))
-  msg("Channel: %s %s %s (#%d)" % (channel_date, channel_version,
-                                   channel_commit, channel_position))
-  msg("")
-
-  return target_version
 
 
 def get_build_directory_name(is_debug):
@@ -597,7 +469,7 @@ def check_pattern_matches(output_file=None):
 # Cannot be loaded as a module.
 if __name__ != "__main__":
   sys.stderr.write('This file cannot be loaded as a module!')
-  sys.exit()
+  sys.exit(1)
 
 # Parse command-line options.
 disc = """
@@ -644,16 +516,6 @@ parser.add_option('--chromium-checkout', dest='chromiumcheckout',
                   help='Version of Chromium to checkout (Git '+\
                        'branch/hash/tag). This overrides the value specified '+\
                        'by CEF in CHROMIUM_BUILD_COMPATIBILITY.txt.',
-                  default='')
-parser.add_option('--chromium-channel', dest='chromiumchannel',
-                  help='Chromium channel to check out (canary, dev, beta or '+\
-                       'stable). This overrides the value specified by CEF '+\
-                       'in CHROMIUM_BUILD_COMPATIBILITY.txt.',
-                  default='')
-parser.add_option('--chromium-channel-distance', dest='chromiumchanneldistance',
-                  help='The target number of commits to step in the '+\
-                       'channel, or 0 to use the newest channel version. '+\
-                       'Used in combination with --chromium-channel.',
                   default='')
 
 # Miscellaneous options.
@@ -809,6 +671,12 @@ parser.add_option(
     dest='arm64build',
     default=False,
     help='Create an ARM64 build.')
+parser.add_option(
+    '--with-pgo-profiles',
+    action='store_true',
+    dest='withpgoprofiles',
+    default=False,
+    help='Download PGO profiles for the build.')
 
 # Test-related options.
 parser.add_option(
@@ -929,7 +797,7 @@ parser.add_option(
 if options.downloaddir is None:
   print("The --download-dir option is required.")
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 # Opt into component-specific flags for later use.
 if options.noupdate:
@@ -944,11 +812,10 @@ if (options.nochromiumupdate and options.forceupdate) or \
    (options.nocefupdate and options.forceupdate) or \
    (options.nobuild and options.forcebuild) or \
    (options.nodistrib and options.forcedistrib) or \
-   ((options.forceclean or options.forcecleandeps) and options.fastupdate) or \
-   (options.chromiumcheckout and options.chromiumchannel):
+   ((options.forceclean or options.forcecleandeps) and options.fastupdate):
   print("Invalid combination of options.")
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 if (options.noreleasebuild and \
      (options.minimaldistrib or options.minimaldistribonly or \
@@ -956,24 +823,24 @@ if (options.noreleasebuild and \
    (options.minimaldistribonly + options.clientdistribonly + options.sandboxdistribonly > 1):
   print('Invalid combination of options.')
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 if options.x64build + options.armbuild + options.arm64build > 1:
   print('Invalid combination of options.')
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 if (options.buildtests or options.runtests) and len(options.testtarget) == 0:
   print("A test target must be specified via --test-target.")
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 # Operating system.
 if options.dryrun and options.dryrunplatform is not None:
   platform = options.dryrunplatform
   if not platform in ['windows', 'mac', 'linux']:
     print('Invalid dry-run-platform value: %s' % (platform))
-    sys.exit()
+    sys.exit(1)
 elif sys.platform == 'win32':
   platform = 'windows'
 elif sys.platform == 'darwin':
@@ -982,7 +849,7 @@ elif sys.platform.startswith('linux'):
   platform = 'linux'
 else:
   print('Unknown operating system platform')
-  sys.exit()
+  sys.exit(1)
 
 if options.clientdistrib or options.clientdistribonly:
   if platform == 'linux' or (platform == 'windows' and options.arm64build):
@@ -993,7 +860,7 @@ if options.clientdistrib or options.clientdistribonly:
     print('A client distribution cannot be generated if --build-target ' +
           'excludes %s.' % client_app)
     parser.print_help(sys.stderr)
-    sys.exit()
+    sys.exit(1)
 
 # CEF branch.
 cef_branch = options.branch
@@ -1003,13 +870,13 @@ if not branch_is_master:
   # Verify that the branch value is numeric.
   if not cef_branch.isdigit():
     print('Invalid branch value: %s' % cef_branch)
-    sys.exit()
+    sys.exit(1)
 
   # Verify the minimum supported branch number.
   if int(cef_branch) < 3071:
     print('The requested branch (%s) is too old to build using this tool. ' +
           'The minimum supported branch is 3071.' % cef_branch)
-    sys.exit()
+    sys.exit(1)
 
 # True if the requested branch is 3538 or newer.
 branch_is_3538_or_newer = (branch_is_master or int(cef_branch) >= 3538)
@@ -1026,19 +893,19 @@ if not branch_is_3945_or_newer and \
   (not is_python2 or bool(int(os.environ.get('GCLIENT_PY3', '0')))):
   print('Python 3 is not supported with branch 3904 and older ' +
         '(set GCLIENT_PY3=0 and run with Python 2 executable).')
-  sys.exit()
+  sys.exit(1)
 
 if options.armbuild:
   if platform != 'linux':
     print('The ARM build option is only supported on Linux.')
-    sys.exit()
+    sys.exit(1)
 
 deps_file = 'DEPS'
 
 if platform == 'mac' and not (options.x64build or options.arm64build):
   print('32-bit MacOS builds are not supported. ' +
         'Add --x64-build or --arm64-build flag to generate a 64-bit build.')
-  sys.exit()
+  sys.exit(1)
 
 # Platforms that build a cef_sandbox library.
 sandbox_lib_platforms = ['windows']
@@ -1048,7 +915,7 @@ if branch_is_3538_or_newer:
 if not platform in sandbox_lib_platforms and (options.sandboxdistrib or
                                               options.sandboxdistribonly):
   print('The sandbox distribution is not supported on this platform.')
-  sys.exit()
+  sys.exit(1)
 
 # Options that force the sources to change.
 force_change = options.forceclean or options.forceupdate
@@ -1060,7 +927,7 @@ if options.resave and (options.forcepatchupdate or discard_local_changes):
   print('--resave cannot be combined with options that modify or discard ' +
         'patches.')
   parser.print_help(sys.stderr)
-  sys.exit()
+  sys.exit(1)
 
 if platform == 'windows':
   # Avoid errors when the "vs_toolchain.py update" Chromium hook runs.
@@ -1261,6 +1128,9 @@ if not os.path.exists(gclient_file) or options.forceconfig:
         "'managed': False,"+\
         "'name': 'src', "+\
         "'url': '" + chromium_url + "', "+\
+        "'custom_vars': {"+\
+          "'checkout_pgo_profiles': " + ('True' if options.withpgoprofiles else 'False') + ", "+\
+        "}, "+\
         "'custom_deps': {"+\
           "'build': None, "+\
           "'build/scripts/command_wrapper/bin': None, "+\
@@ -1311,11 +1181,6 @@ if not options.nochromiumupdate and os.path.exists(chromium_src_dir):
 chromium_compat_version = build_compat_versions['chromium_checkout']
 if len(options.chromiumcheckout) > 0:
   chromium_checkout = options.chromiumcheckout
-elif len(options.chromiumchannel) > 0:
-  target_distance = int(options.chromiumchanneldistance
-                       ) if len(options.chromiumchanneldistance) > 0 else 0
-  chromium_checkout = get_chromium_target_version(
-      channel=options.chromiumchannel, target_distance=target_distance)
 else:
   chromium_checkout = chromium_compat_version
 
