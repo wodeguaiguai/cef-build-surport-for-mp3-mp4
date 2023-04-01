@@ -23,7 +23,7 @@ set vc_redist_crt=Microsoft.VC143.CRT
 set arch=x64
 
 set CEF_USE_GN=1
-set GN_DEFINES=is_official_build=true ffmpeg_branding=Chrome proprietary_codecs=true 
+set GN_DEFINES=is_official_build=true ffmpeg_branding=Chrome proprietary_codecs=true chrome_pgo_phase=0
 set GYP_DEFINES=buildtype=Official    
 @REM set GYP_MSVS_VERSION=2019
 set GYP_MSVS_VERSION=2022
