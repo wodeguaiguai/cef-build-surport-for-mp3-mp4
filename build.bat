@@ -14,7 +14,7 @@ set vc_redist_crt=Microsoft.VC143.CRT
 set arch=x64
 
 set CEF_USE_GN=1
-set GN_DEFINES=is_official_build=true is_component_build=true ffmpeg_branding=Chrome proprietary_codecs=true chrome_pgo_phase=0 enable_sandbox=false
+set GN_DEFINES=is_official_build=true ffmpeg_branding=Chrome proprietary_codecs=true chrome_pgo_phase=0
 set GYP_DEFINES=buildtype=Official
 set GYP_MSVS_VERSION=2022
 set CEF_ARCHIVE_FORMAT=tar.bz2
